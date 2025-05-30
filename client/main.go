@@ -21,18 +21,29 @@ import (
 	pb "nlb/proto"
 )
 
-const (
-	TCPAddr   = "localhost:8001"
-	UDPAddr   = "localhost:8002"
-	GRPCAddr  = "localhost:8003"
-	HTTPAddr  = "http://localhost:8004"
-	HTTP2Addr = "https://localhost:8005"
-)
+// getHost returns the load balancer host from environment variable or fallback to localhost
+func getHost() string {
+	if host := os.Getenv("LOAD_BALANCER_HOST"); host != "" {
+		return host
+	}
+	return "localhost"
+}
+
+// getAddresses returns the service addresses using the configured host
+func getAddresses() (string, string, string, string, string) {
+	host := getHost()
+	return fmt.Sprintf("%s:8001", host), // TCP
+		fmt.Sprintf("%s:8002", host), // UDP
+		fmt.Sprintf("%s:8003", host), // gRPC
+		fmt.Sprintf("http://%s:8004", host), // HTTP
+		fmt.Sprintf("https://%s:8005", host) // HTTP/2
+}
 
 func testTCPClient() error {
 	fmt.Println("=== Testing TCP Client ===")
 
-	conn, err := net.Dial("tcp", TCPAddr)
+	tcpAddr, _, _, _, _ := getAddresses()
+	conn, err := net.Dial("tcp", tcpAddr)
 	if err != nil {
 		return fmt.Errorf("failed to connect to TCP server: %v", err)
 	}
@@ -58,7 +69,8 @@ func testTCPClient() error {
 func testUDPClient() error {
 	fmt.Println("\n=== Testing UDP Client ===")
 
-	conn, err := net.Dial("udp", UDPAddr)
+	_, udpAddr, _, _, _ := getAddresses()
+	conn, err := net.Dial("udp", udpAddr)
 	if err != nil {
 		return fmt.Errorf("failed to connect to UDP server: %v", err)
 	}
@@ -84,7 +96,8 @@ func testUDPClient() error {
 func testGRPCClient() error {
 	fmt.Println("\n=== Testing gRPC Client ===")
 
-	conn, err := grpc.Dial(GRPCAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	_, _, grpcAddr, _, _ := getAddresses()
+	conn, err := grpc.Dial(grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return fmt.Errorf("failed to connect to gRPC server: %v", err)
 	}
@@ -115,7 +128,8 @@ func testHTTPClient() error {
 		Timeout: 5 * time.Second,
 	}
 
-	url := fmt.Sprintf("%s/echo?message=%s", HTTPAddr, "Hello HTTP Server!")
+	_, _, _, httpAddr, _ := getAddresses()
+	url := fmt.Sprintf("%s/echo?message=%s", httpAddr, "Hello HTTP Server!")
 	resp, err := client.Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to make HTTP request: %v", err)
@@ -212,8 +226,8 @@ func testHTTP2Client() error {
 	// Create HTTP/2 client with proper TLS validation
 	transport := &http2.Transport{
 		TLSClientConfig: &tls.Config{
-			RootCAs:    certPool,    // Use our custom certificate pool
-			ServerName: "localhost", // Verify server name matches certificate
+			RootCAs:    certPool,  // Use our custom certificate pool
+			ServerName: getHost(), // Verify server name matches certificate using dynamic host
 		},
 	}
 
@@ -222,7 +236,8 @@ func testHTTP2Client() error {
 		Timeout:   5 * time.Second,
 	}
 
-	url := fmt.Sprintf("%s/echo?message=%s", HTTP2Addr, "Hello HTTP/2 Server!")
+	_, _, _, _, http2Addr := getAddresses()
+	url := fmt.Sprintf("%s/echo?message=%s", http2Addr, "Hello HTTP/2 Server!")
 	resp, err := client.Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to make HTTP/2 request: %v", err)

@@ -110,7 +110,7 @@
           },
           "cloudfrontAutoCacheInvalidation": true,
           "originShieldEnabled": true
-        }, 
+        },
         {
           "id": "nlb-client-scheduler",
           "name": "NLB Client Scheduler",
@@ -127,6 +127,14 @@
             "nlb-client-test": {
               "startCommand": ["/bin/sh", "-c", ". ./certs.env && ./client"],
               "schedule": "manual"
+            }
+          },
+          "envVariables": {
+            "LOAD_BALANCER_HOST": {
+              "fromService": {
+                "id": "nlb-server",
+                "value": "loadBalancerHost"
+              }
             }
           },
           "buildType": "fromService",
