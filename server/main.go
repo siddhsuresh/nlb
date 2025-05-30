@@ -269,13 +269,21 @@ func startGRPCHealthServer() {
 		if r.URL.Path != "/" {
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("404 Not Found - Available endpoints: /echo"))
+			w.Write([]byte("404 Not Found - Available endpoints: /echo, /health"))
 			return
 		}
 
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("gRPC Health Check Server - gRPC service available at localhost" + GRPCPort))
+	})
+
+	// Add simple health check endpoint
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("🩺 [gRPC-Health] Health check from %s", r.RemoteAddr)
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
 	})
 
 	server := &http.Server{
@@ -335,23 +343,33 @@ func startHTTPServer() {
 			log.Printf("⚠️  [HTTP] Request to unknown path: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("404 Not Found - Available endpoints: /echo"))
+			w.Write([]byte("404 Not Found - Available endpoints: /echo, /health"))
 			return
 		}
 
 		log.Printf("📨 [HTTP] Root request: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("HTTP Server is running! Available endpoints: /echo"))
+		w.Write([]byte("HTTP Server is running! Available endpoints: /echo, /health"))
+	})
+
+	// Add a simple health check endpoint
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("🩺 [HTTP] Health check from %s", r.RemoteAddr)
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
 	})
 
 	server := &http.Server{
-		Addr:    HTTPPort,
-		Handler: mux,
+		Addr:     HTTPPort,
+		Handler:  mux,
+		ErrorLog: log.New(os.Stdout, "[HTTP-ERROR] ", log.LstdFlags),
 	}
 
 	log.Printf("✅ [HTTP] HTTP server configured and starting on %s", HTTPPort)
 	log.Printf("📋 [HTTP] Server details - Address: %s, Endpoints: [/echo]", HTTPPort)
+	log.Printf("ℹ️  [HTTP] Note: This is a plain HTTP server. HTTPS requests should use port %s", HTTP2Port)
 
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("❌ [HTTP] FATAL: Failed to serve HTTP on %s: %v", HTTPPort, err)
