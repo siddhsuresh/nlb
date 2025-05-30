@@ -22,11 +22,12 @@ import (
 )
 
 const (
-	TCPPort   = ":8001"
-	UDPPort   = ":8002"
-	GRPCPort  = ":8003"
-	HTTPPort  = ":8004"
-	HTTP2Port = ":8005"
+	TCPPort        = ":8001"
+	UDPPort        = ":8002"
+	GRPCPort       = ":8003"
+	HTTPPort       = ":8004"
+	HTTP2Port      = ":8005"
+	GRPCHealthPort = ":8006" // Health check port for gRPC
 )
 
 // gRPC service implementation
@@ -216,6 +217,66 @@ func startGRPCServer() {
 	}
 }
 
+// gRPC Health Check Server
+func startGRPCHealthServer() {
+	log.Printf("🩺 [gRPC-Health] Initializing gRPC health check server on port %s...", GRPCHealthPort)
+
+	requestCount := 0
+	mux := http.NewServeMux()
+
+	log.Printf("📋 [gRPC-Health] Registering /echo endpoint...")
+	mux.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		startTime := time.Now()
+
+		log.Printf("🩺 [gRPC-Health] Request #%d: %s %s from %s",
+			requestCount, r.Method, r.URL.Path, r.RemoteAddr)
+
+		message := r.URL.Query().Get("message")
+		if message == "" {
+			message = "gRPC server healthy"
+		}
+
+		response := fmt.Sprintf("gRPC Health Check: %s", message)
+
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("X-Server-Type", "gRPC-Health-Check")
+		w.Header().Set("X-gRPC-Server", "localhost"+GRPCPort)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(response))
+
+		duration := time.Since(startTime)
+		log.Printf("✅ [gRPC-Health] Request #%d completed in %v: %q",
+			requestCount, duration, response)
+	})
+
+	// Add root health endpoint
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("404 Not Found - Available endpoints: /echo"))
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("gRPC Health Check Server - gRPC service available at localhost" + GRPCPort))
+	})
+
+	server := &http.Server{
+		Addr:    GRPCHealthPort,
+		Handler: mux,
+	}
+
+	log.Printf("✅ [gRPC-Health] Health check server configured and starting on %s", GRPCHealthPort)
+	log.Printf("📋 [gRPC-Health] Server details - Address: %s, Endpoints: [/echo], gRPC Server: %s", GRPCHealthPort, GRPCPort)
+
+	if err := server.ListenAndServe(); err != nil {
+		log.Fatalf("❌ [gRPC-Health] FATAL: Failed to serve health check on %s: %v", GRPCHealthPort, err)
+	}
+}
+
 // HTTP Server
 func startHTTPServer() {
 	log.Printf("🚀 [HTTP] Initializing HTTP server on port %s...", HTTPPort)
@@ -396,11 +457,12 @@ func certExists(filename string) bool {
 
 func main() {
 	log.Printf("🌟 ==================== NETWORK LOAD BALANCER SERVER ====================")
-	log.Printf("🚀 Starting multi-protocol server with 5 different service types...")
+	log.Printf("🚀 Starting multi-protocol server with 6 different service types...")
 	log.Printf("📍 Server Configuration:")
 	log.Printf("   📡 TCP Server:    %s", TCPPort)
 	log.Printf("   📡 UDP Server:    %s", UDPPort)
 	log.Printf("   📡 gRPC Server:   %s", GRPCPort)
+	log.Printf("   🩺 gRPC Health:   %s", GRPCHealthPort)
 	log.Printf("   📡 HTTP Server:   %s", HTTPPort)
 	log.Printf("   📡 HTTP/2 Server: %s (HTTPS)", HTTP2Port)
 	log.Printf("🕒 Startup Time: %s", time.Now().Format(time.RFC3339))
@@ -409,7 +471,7 @@ func main() {
 	log.Printf("========================================================================")
 
 	var wg sync.WaitGroup
-	serverCount := 5
+	serverCount := 6
 
 	log.Printf("🔄 Initializing %d concurrent servers...", serverCount)
 
@@ -443,6 +505,15 @@ func main() {
 		startGRPCServer()
 	}()
 
+	log.Printf("🎯 [gRPC-Health] Launching gRPC health check server goroutine...")
+	go func() {
+		defer func() {
+			log.Printf("🔚 [gRPC-Health] gRPC health check server goroutine terminated")
+			wg.Done()
+		}()
+		startGRPCHealthServer()
+	}()
+
 	log.Printf("🎯 [HTTP] Launching HTTP server goroutine...")
 	go func() {
 		defer func() {
@@ -469,7 +540,8 @@ func main() {
 	log.Printf("📋 Service Summary:")
 	log.Printf("   🔗 TCP Echo Service:    telnet localhost%s", TCPPort)
 	log.Printf("   📦 UDP Echo Service:    nc -u localhost %s", UDPPort[1:]) // Remove the ":"
-	log.Printf("   🚀 gRPC Echo Service:   grpcurl -plaintext localhost%s EchoService/Echo", GRPCPort)
+	log.Printf("   🚀 gRPC Echo Service:   grpcurl -plaintext localhost%s nlb.EchoService/Echo", GRPCPort)
+	log.Printf("   🩺 gRPC Health Check:   curl http://localhost%s/echo?message=health", GRPCHealthPort)
 	log.Printf("   🌐 HTTP Echo Service:   curl http://localhost%s/echo?message=hello", HTTPPort)
 	log.Printf("   🔒 HTTP/2 Echo Service: curl -k https://localhost%s/echo?message=hello", HTTP2Port)
 	log.Printf("==============================================================")

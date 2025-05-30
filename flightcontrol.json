@@ -47,6 +47,7 @@
               "protocol": "grpc",
               "healthCheck": {
                 "type": "http",
+                "httpPort": 8006,
                 "path": "/echo",
                 "timeoutSecs": 5,
                 "intervalSecs": 30
