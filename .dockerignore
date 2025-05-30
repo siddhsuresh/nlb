@@ -1,0 +1,33 @@
+# Build artifacts
+bin/
+*.log
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Makefile (not needed in container)
+Makefile 
