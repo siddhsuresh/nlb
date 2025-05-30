@@ -46,9 +46,7 @@
               "port": 8003,
               "protocol": "grpc",
               "healthCheck": {
-                "type": "http",
-                "httpPort": 8006,
-                "path": "/health",
+                "type": "tcp",
                 "timeoutSecs": 5,
                 "intervalSecs": 30
               },
