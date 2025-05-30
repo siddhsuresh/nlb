@@ -14,7 +14,7 @@
         {
           "id": "nlb-server",
           "name": "NLB Server",
-          "type": "network-service",
+          "type": "network_service",
           "target": {
             "type": "fargate"
           },
