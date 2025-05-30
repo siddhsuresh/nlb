@@ -33,6 +33,16 @@ run-server: build-server
 	@echo "Loading certificates from environment..."
 	@bash -c 'source certs.env && ./bin/server'
 
+stop-server:
+	@for port in 8001 8002 8003 8004 8005; do \
+		pids=$$(lsof -ti :$$port 2>/dev/null); \
+		if [ -n "$$pids" ]; then \
+			echo "$$pids" | xargs kill -TERM 2>/dev/null && echo "Stopped server on port $$port"; \
+		else \
+			echo "No process found on port $$port"; \
+		fi; \
+	done
+
 # Run client (assumes server is already running)
 run-client: build-client
 	@echo "Running client tests..."

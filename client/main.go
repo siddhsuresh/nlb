@@ -129,6 +129,7 @@ func testHTTPClient() error {
 	}
 
 	_, _, _, httpAddr, _ := getAddresses()
+	fmt.Printf("Testing HTTP Client on %s\n", httpAddr)
 	url := fmt.Sprintf("%s/echo?message=%s", httpAddr, "Hello HTTP Server!")
 	resp, err := client.Get(url)
 	if err != nil {
