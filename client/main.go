@@ -43,6 +43,7 @@ func testTCPClient() error {
 	fmt.Println("=== Testing TCP Client ===")
 
 	tcpAddr, _, _, _, _ := getAddresses()
+	fmt.Println("Testing TCP Client on", tcpAddr)
 	conn, err := net.Dial("tcp", tcpAddr)
 	if err != nil {
 		return fmt.Errorf("failed to connect to TCP server: %v", err)
