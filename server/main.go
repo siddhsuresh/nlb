@@ -189,7 +189,7 @@ func startUDPServer() {
 
 // gRPC Server
 func startGRPCServer() {
-	log.Printf("🚀 [gRPC] Initializing gRPC server on port %s...", GRPCPort)
+	log.Printf("🚀 [gRPC] Initializing gRPC server with HTTP health check on port %s...", GRPCPort)
 
 	listener, err := net.Listen("tcp", GRPCPort)
 	if err != nil {
@@ -198,21 +198,65 @@ func startGRPCServer() {
 	log.Printf("🎯 [gRPC] gRPC listener bound to %s", listener.Addr().String())
 
 	log.Printf("⚙️  [gRPC] Creating gRPC server instance...")
-	s := grpc.NewServer()
+	grpcServer := grpc.NewServer()
 
 	log.Printf("📋 [gRPC] Registering EchoService...")
-	pb.RegisterEchoServiceServer(s, &echoServer{})
+	pb.RegisterEchoServiceServer(grpcServer, &echoServer{})
 
 	log.Printf("🔍 [gRPC] Enabling gRPC reflection for debugging...")
-	reflection.Register(s)
+	reflection.Register(grpcServer)
 
-	log.Printf("✅ [gRPC] gRPC server successfully configured and listening on %s", GRPCPort)
-	log.Printf("📋 [gRPC] Server details - Address: %s, Services: [EchoService], Reflection: enabled",
+	// Create HTTP health check handler
+	log.Printf("🏥 [gRPC] Setting up HTTP health check endpoint...")
+	httpMux := http.NewServeMux()
+	requestCount := 0
+
+	httpMux.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		startTime := time.Now()
+
+		log.Printf("🩺 [gRPC/HTTP] Health check request #%d: %s %s from %s",
+			requestCount, r.Method, r.URL.Path, r.RemoteAddr)
+
+		message := r.URL.Query().Get("message")
+		if message == "" {
+			message = "gRPC server healthy"
+		}
+
+		response := fmt.Sprintf("gRPC Health Check Echo: %s", message)
+
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("X-Server-Type", "gRPC-HTTP-Multiplexed")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(response))
+
+		duration := time.Since(startTime)
+		log.Printf("✅ [gRPC/HTTP] Health check #%d completed in %v: %q",
+			requestCount, duration, response)
+	})
+
+	// Create a multiplexed handler that can serve both gRPC and HTTP
+	muxHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if this is a gRPC request
+		if r.ProtoMajor == 2 && r.Header.Get("Content-Type") == "application/grpc" {
+			grpcServer.ServeHTTP(w, r)
+		} else {
+			// Handle as HTTP request
+			httpMux.ServeHTTP(w, r)
+		}
+	})
+
+	log.Printf("✅ [gRPC] gRPC server with HTTP health check successfully configured on %s", GRPCPort)
+	log.Printf("📋 [gRPC] Server details - Address: %s, Services: [EchoService], HTTP: [/echo], Reflection: enabled",
 		listener.Addr().String())
 
-	log.Printf("🔄 [gRPC] Starting to serve gRPC requests...")
-	if err := s.Serve(listener); err != nil {
-		log.Fatalf("❌ [gRPC] FATAL: Failed to serve gRPC on %s: %v", GRPCPort, err)
+	log.Printf("🔄 [gRPC] Starting to serve gRPC requests and HTTP health checks...")
+	server := &http.Server{
+		Handler: muxHandler,
+	}
+
+	if err := server.Serve(listener); err != nil {
+		log.Fatalf("❌ [gRPC] FATAL: Failed to serve gRPC/HTTP on %s: %v", GRPCPort, err)
 	}
 }
 
@@ -454,6 +498,7 @@ func main() {
 	log.Printf("   🔗 TCP Echo Service:    telnet localhost%s", TCPPort)
 	log.Printf("   📦 UDP Echo Service:    nc -u localhost %s", UDPPort[1:]) // Remove the ":"
 	log.Printf("   🚀 gRPC Echo Service:   grpcurl -plaintext localhost%s EchoService/Echo", GRPCPort)
+	log.Printf("   🩺 gRPC Health Check:   curl http://localhost%s/echo?message=health", GRPCPort)
 	log.Printf("   🌐 HTTP Echo Service:   curl http://localhost%s/echo?message=hello", HTTPPort)
 	log.Printf("   🔒 HTTP/2 Echo Service: curl -k https://localhost%s/echo?message=hello", HTTP2Port)
 	log.Printf("==============================================================")

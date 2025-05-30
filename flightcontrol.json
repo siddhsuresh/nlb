@@ -62,8 +62,7 @@
                 "path": "/echo",
                 "timeoutSecs": 5,
                 "intervalSecs": 30
-              },
-              "tls": true
+              }
             },
             {
               "id": "http2-port",
