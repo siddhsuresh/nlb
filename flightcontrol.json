@@ -18,8 +18,9 @@
           "target": {
             "type": "fargate"
           },
-          "ports": {
-            "tcp-port": {
+          "ports": [
+            {
+              "id": "tcp-port",
               "port": 8001,
               "protocol": "tcp",
               "healthCheck": {
@@ -30,7 +31,8 @@
               },
               "tls": true
             },
-            "udp-port": {
+            {
+              "id": "udp-port",
               "port": 8002,
               "protocol": "udp",
               "healthCheck": {
@@ -40,7 +42,8 @@
                 "retries": 3
               }
             },
-            "grpc-port": {
+            {
+              "id": "grpc-port",
               "port": 8003,
               "protocol": "grpc",
               "healthCheck": {
@@ -53,7 +56,8 @@
               },
               "tls": true
             },
-            "http-port": {
+            {
+              "id": "http-port",
               "port": 8004,
               "protocol": "http",
               "healthCheck": {
@@ -66,7 +70,8 @@
               },
               "tls": true
             },
-            "http2-port": {
+            {
+              "id": "http2-port",
               "port": 8005,
               "protocol": "http2",
               "healthCheck": {
@@ -79,7 +84,7 @@
               },
               "tls": true
             }
-          },
+          ],
           "cpu": 1,
           "gpu": 0,
           "memory": 2,
