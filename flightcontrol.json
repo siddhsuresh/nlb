@@ -47,7 +47,7 @@
               "protocol": "grpc",
               "healthCheck": {
                 "type": "http",
-                "path": "/health",
+                "path": "/echo",
                 "timeoutSecs": 5,
                 "intervalSecs": 30
               },
