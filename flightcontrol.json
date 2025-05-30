@@ -26,8 +26,7 @@
               "healthCheck": {
                 "type": "tcp",
                 "timeoutSecs": 5,
-                "intervalSecs": 30,
-                "retries": 3
+                "intervalSecs": 30
               },
               "tls": true
             },
@@ -37,9 +36,9 @@
               "protocol": "udp",
               "healthCheck": {
                 "type": "udp",
+                "tcpPort": 8001,
                 "timeoutSecs": 5,
-                "intervalSecs": 30,
-                "retries": 3
+                "intervalSecs": 30
               }
             },
             {
@@ -50,9 +49,7 @@
                 "type": "http",
                 "path": "/health",
                 "timeoutSecs": 5,
-                "intervalSecs": 30,
-                "retries": 3,
-                "expectedStatusCode": 200
+                "intervalSecs": 30
               },
               "tls": true
             },
@@ -64,9 +61,7 @@
                 "type": "http",
                 "path": "/echo",
                 "timeoutSecs": 5,
-                "intervalSecs": 30,
-                "retries": 3,
-                "expectedStatusCode": 200
+                "intervalSecs": 30
               },
               "tls": true
             },
@@ -78,9 +73,7 @@
                 "type": "http",
                 "path": "/echo",
                 "timeoutSecs": 5,
-                "intervalSecs": 30,
-                "retries": 3,
-                "expectedStatusCode": 200
+                "intervalSecs": 30
               },
               "tls": true
             }
