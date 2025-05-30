@@ -110,14 +110,26 @@ func handleTCPConnection(conn net.Conn, connID int) {
 		conn.Close()
 	}()
 
+	// Set a read timeout to handle clients that connect but don't send data
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+
 	log.Printf("📖 [TCP] [Conn#%d] Reading data from client %s...", connID, remoteAddr)
 
 	buffer := make([]byte, 1024)
 	n, err := conn.Read(buffer)
 	if err != nil {
-		log.Printf("❌ [TCP] [Conn#%d] ERROR: Failed to read from connection %s: %v", connID, remoteAddr, err)
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			log.Printf("⏰ [TCP] [Conn#%d] TIMEOUT: Client %s connected but sent no data within 5s (likely health check)", connID, remoteAddr)
+		} else if err.Error() == "EOF" {
+			log.Printf("🔌 [TCP] [Conn#%d] INFO: Client %s disconnected immediately (likely health check or port scan)", connID, remoteAddr)
+		} else {
+			log.Printf("❌ [TCP] [Conn#%d] ERROR: Failed to read from connection %s: %v", connID, remoteAddr, err)
+		}
 		return
 	}
+
+	// Clear the read deadline for the response
+	conn.SetReadDeadline(time.Time{})
 
 	message := string(buffer[:n])
 	log.Printf("📨 [TCP] [Conn#%d] Received %d bytes from %s: %q", connID, n, remoteAddr, message)
@@ -125,6 +137,8 @@ func handleTCPConnection(conn net.Conn, connID int) {
 	response := fmt.Sprintf("TCP Echo: %s", message)
 	log.Printf("📤 [TCP] [Conn#%d] Sending response (%d bytes) to %s: %q", connID, len(response), remoteAddr, response)
 
+	// Set a write timeout
+	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	bytesWritten, err := conn.Write([]byte(response))
 	if err != nil {
 		log.Printf("❌ [TCP] [Conn#%d] ERROR: Failed to write response to %s: %v", connID, remoteAddr, err)
