@@ -3,10 +3,14 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -128,13 +132,88 @@ func testHTTPClient() error {
 	return nil
 }
 
+// loadServerCertificate loads the server's certificate from environment variables or file
+func loadServerCertificate() (*x509.Certificate, error) {
+	// Try environment variables first (for Docker)
+	if cert, err := loadServerCertFromEnv(); err == nil {
+		return cert, nil
+	}
+
+	// Fallback to file for local development
+	if _, err := os.Stat("server.crt"); err == nil {
+		return loadServerCertFromFile()
+	}
+
+	return nil, fmt.Errorf("server certificate not found in environment variables or files")
+}
+
+func loadServerCertFromEnv() (*x509.Certificate, error) {
+	certB64 := os.Getenv("TLS_CERT")
+	if certB64 == "" {
+		return nil, fmt.Errorf("TLS_CERT environment variable not set")
+	}
+
+	// Decode base64 certificate
+	certPEM, err := base64.StdEncoding.DecodeString(certB64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode TLS_CERT: %v", err)
+	}
+
+	// Decode PEM
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return nil, fmt.Errorf("failed to decode PEM certificate")
+	}
+
+	// Parse the certificate
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse certificate: %v", err)
+	}
+
+	return cert, nil
+}
+
+func loadServerCertFromFile() (*x509.Certificate, error) {
+	// Read the certificate file
+	certPEM, err := os.ReadFile("server.crt")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read server certificate: %v", err)
+	}
+
+	// Decode PEM
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return nil, fmt.Errorf("failed to decode PEM certificate")
+	}
+
+	// Parse the certificate
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse certificate: %v", err)
+	}
+
+	return cert, nil
+}
+
 func testHTTP2Client() error {
 	fmt.Println("\n=== Testing HTTP/2 Client ===")
 
-	// Create HTTP/2 client with insecure TLS for demo
+	// Load the server's certificate for validation
+	serverCert, err := loadServerCertificate()
+	if err != nil {
+		return fmt.Errorf("failed to load server certificate: %v", err)
+	}
+
+	// Create a certificate pool and add our server certificate
+	certPool := x509.NewCertPool()
+	certPool.AddCert(serverCert)
+
+	// Create HTTP/2 client with proper TLS validation
 	transport := &http2.Transport{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
+			RootCAs:    certPool,    // Use our custom certificate pool
+			ServerName: "localhost", // Verify server name matches certificate
 		},
 	}
 
@@ -157,7 +236,103 @@ func testHTTP2Client() error {
 
 	fmt.Printf("HTTP/2 Response: %s (Status: %s, Protocol: %s)\n",
 		string(body), resp.Status, resp.Proto)
+	fmt.Printf("🔒 TLS Connection: Certificate validated successfully!\n")
+
+	// Print certificate source
+	if os.Getenv("TLS_CERT") != "" {
+		fmt.Printf("📋 Certificate Source: Environment Variables (Docker)\n")
+	} else {
+		fmt.Printf("📋 Certificate Source: File System (Local Development)\n")
+	}
+
+	// Print TLS connection info
+	if resp.TLS != nil {
+		fmt.Printf("🔐 TLS Version: %s\n", getTLSVersion(resp.TLS.Version))
+		fmt.Printf("🔑 Cipher Suite: %s\n", getCipherSuite(resp.TLS.CipherSuite))
+		fmt.Printf("📋 Server Certificates: %d\n", len(resp.TLS.PeerCertificates))
+		if len(resp.TLS.PeerCertificates) > 0 {
+			cert := resp.TLS.PeerCertificates[0]
+			fmt.Printf("📅 Certificate Valid From: %s\n", cert.NotBefore.Format("2006-01-02 15:04:05"))
+			fmt.Printf("📅 Certificate Valid Until: %s\n", cert.NotAfter.Format("2006-01-02 15:04:05"))
+			fmt.Printf("🏢 Certificate Subject: %s\n", cert.Subject.String())
+		}
+	}
+
 	return nil
+}
+
+// Helper function to get TLS version string
+func getTLSVersion(version uint16) string {
+	switch version {
+	case tls.VersionTLS10:
+		return "TLS 1.0"
+	case tls.VersionTLS11:
+		return "TLS 1.1"
+	case tls.VersionTLS12:
+		return "TLS 1.2"
+	case tls.VersionTLS13:
+		return "TLS 1.3"
+	default:
+		return fmt.Sprintf("Unknown (%d)", version)
+	}
+}
+
+// Helper function to get cipher suite string
+func getCipherSuite(suite uint16) string {
+	switch suite {
+	case tls.TLS_RSA_WITH_RC4_128_SHA:
+		return "TLS_RSA_WITH_RC4_128_SHA"
+	case tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA:
+		return "TLS_RSA_WITH_3DES_EDE_CBC_SHA"
+	case tls.TLS_RSA_WITH_AES_128_CBC_SHA:
+		return "TLS_RSA_WITH_AES_128_CBC_SHA"
+	case tls.TLS_RSA_WITH_AES_256_CBC_SHA:
+		return "TLS_RSA_WITH_AES_256_CBC_SHA"
+	case tls.TLS_RSA_WITH_AES_128_CBC_SHA256:
+		return "TLS_RSA_WITH_AES_128_CBC_SHA256"
+	case tls.TLS_RSA_WITH_AES_128_GCM_SHA256:
+		return "TLS_RSA_WITH_AES_128_GCM_SHA256"
+	case tls.TLS_RSA_WITH_AES_256_GCM_SHA384:
+		return "TLS_RSA_WITH_AES_256_GCM_SHA384"
+	case tls.TLS_ECDHE_ECDSA_WITH_RC4_128_SHA:
+		return "TLS_ECDHE_ECDSA_WITH_RC4_128_SHA"
+	case tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA:
+		return "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA"
+	case tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA:
+		return "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA"
+	case tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA:
+		return "TLS_ECDHE_RSA_WITH_RC4_128_SHA"
+	case tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA:
+		return "TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA"
+	case tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA:
+		return "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA"
+	case tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA:
+		return "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA"
+	case tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256:
+		return "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256"
+	case tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256:
+		return "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256"
+	case tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:
+		return "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+	case tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:
+		return "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
+	case tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:
+		return "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+	case tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384:
+		return "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"
+	case tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256:
+		return "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256"
+	case tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256:
+		return "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256"
+	case tls.TLS_AES_128_GCM_SHA256:
+		return "TLS_AES_128_GCM_SHA256"
+	case tls.TLS_AES_256_GCM_SHA384:
+		return "TLS_AES_256_GCM_SHA384"
+	case tls.TLS_CHACHA20_POLY1305_SHA256:
+		return "TLS_CHACHA20_POLY1305_SHA256"
+	default:
+		return fmt.Sprintf("Unknown (%d)", suite)
+	}
 }
 
 func testAllServers() {

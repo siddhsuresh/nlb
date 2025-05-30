@@ -2,17 +2,13 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
+	"encoding/base64"
 	"fmt"
 	"log"
-	"math/big"
 	"net"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -201,43 +197,47 @@ func startHTTP2Server() {
 }
 
 func generateSelfSignedCert() (tls.Certificate, error) {
-	// Generate a private key
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	// Try to load certificates from environment variables first
+	if cert, err := loadCertFromEnv(); err == nil {
+		log.Println("✅ Loaded TLS certificate from environment variables")
+		return cert, nil
+	}
+
+	// Fallback to file-based certificates for local development
+	if certExists("server.crt") && certExists("server.key") {
+		log.Println("Loading existing certificate files...")
+		return tls.LoadX509KeyPair("server.crt", "server.key")
+	}
+
+	return tls.Certificate{}, fmt.Errorf("no TLS certificate found - please run in Docker or generate certificates")
+}
+
+func loadCertFromEnv() (tls.Certificate, error) {
+	certB64 := os.Getenv("TLS_CERT")
+	keyB64 := os.Getenv("TLS_KEY")
+
+	if certB64 == "" || keyB64 == "" {
+		return tls.Certificate{}, fmt.Errorf("TLS_CERT or TLS_KEY environment variables not set")
+	}
+
+	// Decode base64 certificates
+	certPEM, err := base64.StdEncoding.DecodeString(certB64)
 	if err != nil {
-		return tls.Certificate{}, err
+		return tls.Certificate{}, fmt.Errorf("failed to decode TLS_CERT: %v", err)
 	}
 
-	// Create certificate template
-	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			Organization:  []string{"Siddharth Suresh"},
-			Country:       []string{"IN"},
-			Province:      []string{"Karnataka"},
-			Locality:      []string{"Bangalore"},
-			StreetAddress: []string{""},
-			PostalCode:    []string{""},
-		},
-		NotBefore:   time.Now(),
-		NotAfter:    time.Now().Add(365 * 24 * time.Hour), // Valid for 1 year
-		KeyUsage:    x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback},
-		DNSNames:    []string{"localhost"},
-	}
-
-	// Create the certificate
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	keyPEM, err := base64.StdEncoding.DecodeString(keyB64)
 	if err != nil {
-		return tls.Certificate{}, err
+		return tls.Certificate{}, fmt.Errorf("failed to decode TLS_KEY: %v", err)
 	}
 
-	// PEM encode the certificate and private key
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
-
-	// Return the TLS certificate
+	// Create TLS certificate from PEM data
 	return tls.X509KeyPair(certPEM, keyPEM)
+}
+
+func certExists(filename string) bool {
+	_, err := os.Stat(filename)
+	return err == nil
 }
 
 func main() {
