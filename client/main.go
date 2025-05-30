@@ -21,20 +21,17 @@ import (
 	pb "nlb/proto"
 )
 
-// getHost returns the load balancer host from environment variable or fallback to localhost
 func getHost() string {
-	// if host := os.Getenv("LOAD_BALANCER_HOST"); host != "" {
-	// 	return host
-	// }
-	// return "localhost"
-	return "nlb-server-ra67yb4.flightcontrol-development.com"
+	if host := os.Getenv("LOAD_BALANCER_HOST"); host != "" {
+		return host
+	}
+	return "localhost"
 }
 
-// getAddresses returns the service addresses using the configured host
 func getAddresses() (string, string, string, string, string) {
 	host := getHost()
 	return fmt.Sprintf("%s:8001", host), // TCP
-		fmt.Sprintf("%s:8002", host), // UDP
+	fmt.Sprintf("%s:8002", host), // UDP
 		fmt.Sprintf("%s:8003", host), // gRPC
 		fmt.Sprintf("http://%s:8004", host), // HTTP
 		fmt.Sprintf("https://%s:8005", host) // HTTP/2
