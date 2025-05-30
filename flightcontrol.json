@@ -42,29 +42,6 @@
               }
             },
             {
-              "id": "grpc-port",
-              "port": 8003,
-              "protocol": "grpc",
-              "healthCheck": {
-                "type": "http",
-                "path": "/echo",
-                "timeoutSecs": 5,
-                "intervalSecs": 30
-              },
-              "tls": true
-            },
-            {
-              "id": "http-port",
-              "port": 8004,
-              "protocol": "http",
-              "healthCheck": {
-                "type": "http",
-                "path": "/echo",
-                "timeoutSecs": 5,
-                "intervalSecs": 30
-              }
-            },
-            {
               "id": "http2-port",
               "port": 8005,
               "protocol": "http2",
