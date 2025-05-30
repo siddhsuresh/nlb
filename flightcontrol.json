@@ -28,7 +28,7 @@
                 "timeoutSecs": 5,
                 "intervalSecs": 30
               },
-              "tls": true
+              "tls": false
             },
             {
               "id": "udp-port",

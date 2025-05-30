@@ -23,10 +23,11 @@ import (
 
 // getHost returns the load balancer host from environment variable or fallback to localhost
 func getHost() string {
-	if host := os.Getenv("LOAD_BALANCER_HOST"); host != "" {
-		return host
-	}
-	return "localhost"
+	// if host := os.Getenv("LOAD_BALANCER_HOST"); host != "" {
+	// 	return host
+	// }
+	// return "localhost"
+	return "nlb-server-ra67yb4.flightcontrol-development.com"
 }
 
 // getAddresses returns the service addresses using the configured host
@@ -44,11 +45,16 @@ func testTCPClient() error {
 
 	tcpAddr, _, _, _, _ := getAddresses()
 	fmt.Println("Testing TCP Client on", tcpAddr)
-	conn, err := net.Dial("tcp", tcpAddr)
+
+	// Add timeout to TCP connection
+	conn, err := net.DialTimeout("tcp", tcpAddr, 5*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to connect to TCP server: %v", err)
 	}
 	defer conn.Close()
+
+	// Set read/write timeouts
+	conn.SetDeadline(time.Now().Add(5 * time.Second))
 
 	message := "Hello TCP Server!"
 	_, err = conn.Write([]byte(message))
@@ -71,11 +77,16 @@ func testUDPClient() error {
 	fmt.Println("\n=== Testing UDP Client ===")
 
 	_, udpAddr, _, _, _ := getAddresses()
-	conn, err := net.Dial("udp", udpAddr)
+
+	// Add timeout to UDP connection
+	conn, err := net.DialTimeout("udp", udpAddr, 5*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to connect to UDP server: %v", err)
 	}
 	defer conn.Close()
+
+	// Set read/write timeouts
+	conn.SetDeadline(time.Now().Add(5 * time.Second))
 
 	message := "Hello UDP Server!"
 	_, err = conn.Write([]byte(message))
