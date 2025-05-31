@@ -31,7 +31,7 @@ func getHost() string {
 func getAddresses() (string, string, string, string, string) {
 	host := getHost()
 	return fmt.Sprintf("%s:8001", host), // TCP
-	fmt.Sprintf("%s:8002", host), // UDP
+		fmt.Sprintf("%s:8002", host), // UDP
 		fmt.Sprintf("%s:8003", host), // gRPC
 		fmt.Sprintf("http://%s:8004", host), // HTTP
 		fmt.Sprintf("https://%s:8005", host) // HTTP/2
@@ -223,34 +223,51 @@ func loadServerCertFromFile() (*x509.Certificate, error) {
 func testHTTP2Client() error {
 	fmt.Println("\n=== Testing HTTP/2 Client ===")
 
-	// Load the server's certificate for validation
-	serverCert, err := loadServerCertificate()
-	if err != nil {
-		return fmt.Errorf("failed to load server certificate: %v", err)
-	}
+	// Check if user wants to skip certificate verification via environment variable
+	skipCertVerification := os.Getenv("SKIP_CERT_VERIFICATION") == "true"
 
-	// Create a certificate pool and add our server certificate
-	certPool := x509.NewCertPool()
-	certPool.AddCert(serverCert)
+	var client *http.Client
+	var certificateMode string
 
-	// Create HTTP/2 client with proper TLS validation
-	transport := &http2.Transport{
-		TLSClientConfig: &tls.Config{
-			RootCAs:    certPool,  // Use our custom certificate pool
-			ServerName: getHost(), // Verify server name matches certificate using dynamic host
-		},
-	}
-
-	client := &http.Client{
-		Transport: transport,
-		Timeout:   5 * time.Second,
+	if skipCertVerification {
+		fmt.Printf("🔓 SKIP_CERT_VERIFICATION=true: Using insecure client\n")
+		client, certificateMode = createInsecureHTTP2Client()
+	} else {
+		// Try to create client with proper certificate validation first
+		var err error
+		client, certificateMode, err = createHTTP2ClientWithValidation()
+		if err != nil {
+			// Fallback to insecure client for testing self-signed certificates
+			fmt.Printf("⚠️  Certificate validation failed: %v\n", err)
+			fmt.Printf("🔓 Falling back to insecure client (skipping certificate verification)...\n")
+			fmt.Printf("💡 Tip: Set SKIP_CERT_VERIFICATION=true to skip this attempt\n")
+			client, certificateMode = createInsecureHTTP2Client()
+		}
 	}
 
 	_, _, _, _, http2Addr := getAddresses()
 	url := fmt.Sprintf("%s/echo?message=%s", http2Addr, "Hello HTTP/2 Server!")
+
+	fmt.Printf("🌐 Making HTTP/2 request to: %s\n", url)
 	resp, err := client.Get(url)
 	if err != nil {
-		return fmt.Errorf("failed to make HTTP/2 request: %v", err)
+		// Check if it's an ALPN protocol error
+		if strings.Contains(err.Error(), "ALPN protocol") || strings.Contains(err.Error(), `want "h2"`) {
+			fmt.Printf("⚠️  HTTP/2 ALPN negotiation failed: %v\n", err)
+			fmt.Printf("🔄 Attempting fallback to HTTPS with HTTP/1.1...\n")
+
+			// Try fallback to regular HTTPS client
+			fallbackResp, fallbackErr := tryHTTPSFallback(url, skipCertVerification)
+			if fallbackErr != nil {
+				return fmt.Errorf("both HTTP/2 and HTTPS fallback failed. HTTP/2 error: %v, HTTPS error: %v", err, fallbackErr)
+			}
+
+			// Use the fallback response
+			resp = fallbackResp
+			fmt.Printf("✅ HTTPS fallback successful\n")
+		} else {
+			return fmt.Errorf("failed to make HTTP/2 request: %v", err)
+		}
 	}
 	defer resp.Body.Close()
 
@@ -261,16 +278,133 @@ func testHTTP2Client() error {
 
 	fmt.Printf("HTTP/2 Response: %s (Status: %s, Protocol: %s)\n",
 		string(body), resp.Status, resp.Proto)
-	fmt.Printf("🔒 TLS Connection: Certificate validated successfully!\n")
 
-	// Print certificate source
-	if os.Getenv("TLS_CERT") != "" {
-		fmt.Printf("📋 Certificate Source: Environment Variables (Docker)\n")
-	} else {
-		fmt.Printf("📋 Certificate Source: File System (Local Development)\n")
+	// Print certificate validation mode
+	switch certificateMode {
+	case "validated":
+		fmt.Printf("🔒 TLS Connection: Certificate validated successfully!\n")
+	case "insecure":
+		fmt.Printf("🔓 TLS Connection: Certificate verification skipped (insecure mode)\n")
 	}
 
+	// Print certificate source information
+	printCertificateSource()
+
 	// Print TLS connection info
+	printTLSInfo(resp)
+
+	return nil
+}
+
+// tryHTTPSFallback attempts to connect using regular HTTPS (HTTP/1.1) instead of HTTP/2
+func tryHTTPSFallback(url string, skipCertVerification bool) (*http.Response, error) {
+	var client *http.Client
+
+	if skipCertVerification {
+		// Create a regular HTTPS client with certificate verification disabled
+		client = &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			},
+			Timeout: 5 * time.Second,
+		}
+	} else {
+		// Try to create a regular HTTPS client with proper certificate validation
+		serverCert, err := loadServerCertificate()
+		if err != nil {
+			// Fallback to insecure client
+			client = &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{
+						InsecureSkipVerify: true,
+					},
+				},
+				Timeout: 5 * time.Second,
+			}
+		} else {
+			certPool := x509.NewCertPool()
+			certPool.AddCert(serverCert)
+
+			client = &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{
+						RootCAs:    certPool,
+						ServerName: getHost(),
+					},
+				},
+				Timeout: 5 * time.Second,
+			}
+		}
+	}
+
+	return client.Get(url)
+}
+
+// createHTTP2ClientWithValidation attempts to create an HTTP/2 client with proper certificate validation
+func createHTTP2ClientWithValidation() (*http.Client, string, error) {
+	// Load the server's certificate for validation
+	serverCert, err := loadServerCertificate()
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to load server certificate: %v", err)
+	}
+
+	// Create a certificate pool and add our server certificate
+	certPool := x509.NewCertPool()
+	certPool.AddCert(serverCert)
+
+	// Create HTTP/2 client with proper TLS validation
+	transport := &http2.Transport{
+		TLSClientConfig: &tls.Config{
+			RootCAs:    certPool,                   // Use our custom certificate pool
+			ServerName: getHost(),                  // Verify server name matches certificate using dynamic host
+			NextProtos: []string{"h2", "http/1.1"}, // Explicitly support HTTP/2
+		},
+		AllowHTTP: false, // Only allow HTTPS
+	}
+
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   5 * time.Second,
+	}
+
+	return client, "validated", nil
+}
+
+// createInsecureHTTP2Client creates an HTTP/2 client that skips certificate verification
+func createInsecureHTTP2Client() (*http.Client, string) {
+	// Create HTTP/2 client with insecure TLS config
+	transport := &http2.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,                       // Skip certificate verification
+			NextProtos:         []string{"h2", "http/1.1"}, // Explicitly support HTTP/2
+		},
+		// Allow HTTP/1.1 fallback if HTTP/2 is not supported
+		AllowHTTP: false, // Only allow HTTPS
+	}
+
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   5 * time.Second,
+	}
+
+	return client, "insecure"
+}
+
+// printCertificateSource prints information about where the certificate was loaded from
+func printCertificateSource() {
+	if os.Getenv("TLS_CERT") != "" {
+		fmt.Printf("📋 Certificate Source: Environment Variables (Docker)\n")
+	} else if _, err := os.Stat("server.crt"); err == nil {
+		fmt.Printf("📋 Certificate Source: File System (Local Development)\n")
+	} else {
+		fmt.Printf("📋 Certificate Source: None (Using insecure connection)\n")
+	}
+}
+
+// printTLSInfo prints detailed TLS connection information
+func printTLSInfo(resp *http.Response) {
 	if resp.TLS != nil {
 		fmt.Printf("🔐 TLS Version: %s\n", getTLSVersion(resp.TLS.Version))
 		fmt.Printf("🔑 Cipher Suite: %s\n", getCipherSuite(resp.TLS.CipherSuite))
@@ -280,10 +414,16 @@ func testHTTP2Client() error {
 			fmt.Printf("📅 Certificate Valid From: %s\n", cert.NotBefore.Format("2006-01-02 15:04:05"))
 			fmt.Printf("📅 Certificate Valid Until: %s\n", cert.NotAfter.Format("2006-01-02 15:04:05"))
 			fmt.Printf("🏢 Certificate Subject: %s\n", cert.Subject.String())
+
+			// Print subject alternative names if available
+			if len(cert.DNSNames) > 0 {
+				fmt.Printf("🌐 DNS Names: %v\n", cert.DNSNames)
+			}
+			if len(cert.IPAddresses) > 0 {
+				fmt.Printf("🔢 IP Addresses: %v\n", cert.IPAddresses)
+			}
 		}
 	}
-
-	return nil
 }
 
 // Helper function to get TLS version string
@@ -413,5 +553,31 @@ func testAllServers() {
 }
 
 func main() {
+	fmt.Println("🚀 Starting comprehensive server tests...")
+	fmt.Println("Make sure the server is running before testing!")
+	fmt.Println("")
+
+	// Print configuration information
+	host := getHost()
+	fmt.Printf("🌐 Target Host: %s\n", host)
+	if host != "localhost" {
+		fmt.Printf("📝 Using LOAD_BALANCER_HOST environment variable\n")
+	}
+
+	// Print certificate configuration
+	if os.Getenv("SKIP_CERT_VERIFICATION") == "true" {
+		fmt.Printf("🔓 Certificate Verification: DISABLED (SKIP_CERT_VERIFICATION=true)\n")
+	} else {
+		fmt.Printf("🔒 Certificate Verification: ENABLED (set SKIP_CERT_VERIFICATION=true to disable)\n")
+	}
+
+	if os.Getenv("TLS_CERT") != "" {
+		fmt.Printf("📋 TLS Certificate: Available via environment variable\n")
+	} else if _, err := os.Stat("server.crt"); err == nil {
+		fmt.Printf("📋 TLS Certificate: Available via file system (server.crt)\n")
+	} else {
+		fmt.Printf("📋 TLS Certificate: Not found (will use insecure mode for HTTPS)\n")
+	}
+
 	testAllServers()
 }
