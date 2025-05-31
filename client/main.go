@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -139,8 +140,17 @@ func testHTTPClient() error {
 
 	_, _, _, httpAddr, _ := getAddresses()
 	fmt.Printf("Testing HTTP Client on %s\n", httpAddr)
-	url := fmt.Sprintf("%s/echo?message=%s", httpAddr, "Hello HTTP Server!")
-	resp, err := client.Get(url)
+
+	// Properly URL-encode the message parameter
+	message := "Hello HTTP Server!"
+	encodedMessage := url.QueryEscape(message)
+	testURL := fmt.Sprintf("%s/echo?message=%s", httpAddr, encodedMessage)
+
+	fmt.Printf("📡 Making HTTP request to: %s\n", testURL)
+	fmt.Printf("📝 Original message: %q\n", message)
+	fmt.Printf("📝 URL-encoded message: %q\n", encodedMessage)
+
+	resp, err := client.Get(testURL)
 	if err != nil {
 		return fmt.Errorf("failed to make HTTP request: %v", err)
 	}
@@ -153,6 +163,33 @@ func testHTTPClient() error {
 
 	fmt.Printf("HTTP Response: %s (Status: %s, Protocol: %s)\n",
 		string(body), resp.Status, resp.Proto)
+
+	// Check if we got an unexpected status
+	if resp.StatusCode >= 400 {
+		fmt.Printf("⚠️  Warning: Received %s status code\n", resp.Status)
+		fmt.Printf("📝 Response body: %s\n", string(body))
+
+		// Try the root endpoint to compare
+		fmt.Printf("🔄 Testing root endpoint for comparison...\n")
+		rootURL := fmt.Sprintf("%s/", httpAddr)
+		rootResp, rootErr := client.Get(rootURL)
+		if rootErr == nil {
+			defer rootResp.Body.Close()
+			rootBody, _ := io.ReadAll(rootResp.Body)
+			fmt.Printf("📋 Root endpoint (%s): %s (Status: %s)\n", rootURL, string(rootBody), rootResp.Status)
+		}
+
+		// Try with a simple message without spaces
+		fmt.Printf("🔄 Testing with simple message...\n")
+		simpleURL := fmt.Sprintf("%s/echo?message=test", httpAddr)
+		simpleResp, simpleErr := client.Get(simpleURL)
+		if simpleErr == nil {
+			defer simpleResp.Body.Close()
+			simpleBody, _ := io.ReadAll(simpleResp.Body)
+			fmt.Printf("📋 Simple message test (%s): %s (Status: %s)\n", simpleURL, string(simpleBody), simpleResp.Status)
+		}
+	}
+
 	return nil
 }
 
@@ -500,7 +537,7 @@ func getCipherSuite(suite uint16) string {
 	}
 }
 
-func testAllServers() {
+func testAllServers() bool {
 	fmt.Println("🚀 Starting comprehensive server tests...")
 	fmt.Println("Make sure the server is running before testing!")
 
@@ -545,11 +582,14 @@ func testAllServers() {
 
 	fmt.Printf("\nOverall: %d/%d tests passed\n", passed, len(tests))
 
-	if passed == len(tests) {
+	allPassed := passed == len(tests)
+	if allPassed {
 		fmt.Println("🎉 All tests passed! Your multi-port server is working correctly!")
 	} else {
 		fmt.Println("⚠️  Some tests failed. Please check the server status.")
 	}
+
+	return allPassed
 }
 
 func main() {
@@ -579,5 +619,9 @@ func main() {
 		fmt.Printf("📋 TLS Certificate: Not found (will use insecure mode for HTTPS)\n")
 	}
 
-	testAllServers()
+	if testAllServers() {
+		os.Exit(0)
+	} else {
+		os.Exit(1)
+	}
 }
