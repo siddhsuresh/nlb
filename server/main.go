@@ -31,7 +31,6 @@ const (
 	HTTP2Port = ":8005"
 )
 
-// gRPC service implementation
 type echoServer struct {
 	pb.UnimplementedEchoServiceServer
 	requestCount int64
@@ -41,7 +40,6 @@ func (s *echoServer) Echo(ctx context.Context, req *pb.EchoRequest) (*pb.EchoRes
 	s.requestCount++
 	startTime := time.Now()
 
-	// Extract client information from context
 	clientInfo := "unknown"
 	if peer, ok := peer.FromContext(ctx); ok {
 		clientInfo = peer.Addr.String()
@@ -64,7 +62,6 @@ func (s *echoServer) Echo(ctx context.Context, req *pb.EchoRequest) (*pb.EchoRes
 	return response, nil
 }
 
-// TCP Server
 func startTCPServer() {
 	log.Printf("🚀 [TCP] Initializing TCP server on port %s...", TCPPort)
 
@@ -111,7 +108,6 @@ func handleTCPConnection(conn net.Conn, connID int) {
 		conn.Close()
 	}()
 
-	// Set a read timeout to handle clients that connect but don't send data
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 
 	log.Printf("📖 [TCP] [Conn#%d] Reading data from client %s...", connID, remoteAddr)
@@ -129,7 +125,6 @@ func handleTCPConnection(conn net.Conn, connID int) {
 		return
 	}
 
-	// Clear the read deadline for the response
 	conn.SetReadDeadline(time.Time{})
 
 	message := string(buffer[:n])
@@ -138,7 +133,6 @@ func handleTCPConnection(conn net.Conn, connID int) {
 	response := fmt.Sprintf("TCP Echo: %s", message)
 	log.Printf("📤 [TCP] [Conn#%d] Sending response (%d bytes) to %s: %q", connID, len(response), remoteAddr, response)
 
-	// Set a write timeout
 	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	bytesWritten, err := conn.Write([]byte(response))
 	if err != nil {
@@ -149,7 +143,6 @@ func handleTCPConnection(conn net.Conn, connID int) {
 	log.Printf("✅ [TCP] [Conn#%d] Successfully sent %d bytes to %s", connID, bytesWritten, remoteAddr)
 }
 
-// UDP Server
 func startUDPServer() {
 	log.Printf("🚀 [UDP] Initializing UDP server on port %s...", UDPPort)
 
@@ -203,7 +196,6 @@ func startUDPServer() {
 	}
 }
 
-// gRPC Server
 func startGRPCServer() {
 	log.Printf("🚀 [gRPC] Initializing gRPC server with health check on port %s...", GRPCPort)
 
@@ -223,9 +215,7 @@ func startGRPCServer() {
 	healthServer := health.NewServer()
 	healthpb.RegisterHealthServer(s, healthServer)
 
-	// Set the health status for the echo service
 	healthServer.SetServingStatus("nlb.EchoService", healthpb.HealthCheckResponse_SERVING)
-	// Set overall server health status
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 
 	log.Printf("🔍 [gRPC] Enabling gRPC reflection for debugging...")
@@ -241,7 +231,6 @@ func startGRPCServer() {
 	}
 }
 
-// HTTP Server
 func startHTTPServer() {
 	log.Printf("🚀 [HTTP] Initializing HTTP server on port %s...", HTTPPort)
 
@@ -279,7 +268,6 @@ func startHTTPServer() {
 		log.Printf("✅ [HTTP] Request #%d completed in %v", requestCount, duration)
 	})
 
-	// Add a default handler for all other paths
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			log.Printf("⚠️  [HTTP] Request to unknown path: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
@@ -295,7 +283,6 @@ func startHTTPServer() {
 		w.Write([]byte("HTTP Server is running! Available endpoints: /echo, /health"))
 	})
 
-	// Add a simple health check endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("🩺 [HTTP] Health check from %s", r.RemoteAddr)
 		w.Header().Set("Content-Type", "text/plain")
@@ -318,7 +305,6 @@ func startHTTPServer() {
 	}
 }
 
-// HTTP/2 Server
 func startHTTP2Server() {
 	log.Printf("🚀 [HTTP/2] Initializing HTTP/2 server on port %s...", HTTP2Port)
 
@@ -358,7 +344,6 @@ func startHTTP2Server() {
 	})
 
 	log.Printf("🔐 [HTTP/2] Loading TLS certificate for HTTPS/HTTP2...")
-	// Generate self-signed certificate for HTTP/2
 	cert, err := generateSelfSignedCert()
 	if err != nil {
 		log.Fatalf("❌ [HTTP/2] FATAL: Failed to load TLS certificate: %v", err)
@@ -374,7 +359,6 @@ func startHTTP2Server() {
 	}
 
 	log.Printf("⚙️  [HTTP/2] Configuring HTTP/2 support...")
-	// Configure HTTP/2
 	http2.ConfigureServer(server, &http2.Server{})
 
 	log.Printf("✅ [HTTP/2] HTTP/2 server configured and starting on %s (HTTPS)", HTTP2Port)
@@ -386,13 +370,11 @@ func startHTTP2Server() {
 }
 
 func generateSelfSignedCert() (tls.Certificate, error) {
-	// Try to load certificates from environment variables first
 	if cert, err := loadCertFromEnv(); err == nil {
 		log.Println("✅ Loaded TLS certificate from environment variables")
 		return cert, nil
 	}
 
-	// Fallback to file-based certificates for local development
 	if certExists("server.crt") && certExists("server.key") {
 		log.Println("Loading existing certificate files...")
 		return tls.LoadX509KeyPair("server.crt", "server.key")
@@ -409,7 +391,6 @@ func loadCertFromEnv() (tls.Certificate, error) {
 		return tls.Certificate{}, fmt.Errorf("TLS_CERT or TLS_KEY environment variables not set")
 	}
 
-	// Decode base64 certificates
 	certPEM, err := base64.StdEncoding.DecodeString(certB64)
 	if err != nil {
 		return tls.Certificate{}, fmt.Errorf("failed to decode TLS_CERT: %v", err)
@@ -420,7 +401,6 @@ func loadCertFromEnv() (tls.Certificate, error) {
 		return tls.Certificate{}, fmt.Errorf("failed to decode TLS_KEY: %v", err)
 	}
 
-	// Create TLS certificate from PEM data
 	return tls.X509KeyPair(certPEM, keyPEM)
 }
 
@@ -448,7 +428,6 @@ func main() {
 
 	log.Printf("🔄 Initializing %d concurrent servers...", serverCount)
 
-	// Start all servers concurrently
 	wg.Add(serverCount)
 
 	log.Printf("🎯 [TCP] Launching TCP server goroutine...")
@@ -496,7 +475,6 @@ func main() {
 		startHTTP2Server()
 	}()
 
-	// Give servers a moment to initialize
 	time.Sleep(2 * time.Second)
 
 	log.Printf("🎉 ==================== ALL SERVERS STARTED ====================")
