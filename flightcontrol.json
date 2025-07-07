@@ -47,8 +47,8 @@
               "protocol": "grpc",
               "healthCheck": {
                 "type": "tcp",
-                "timeoutSecs": 5,
-                "intervalSecs": 30
+                "timeoutSecs": 30,
+                "intervalSecs": 60
               },
               "tls": false
             },
@@ -70,9 +70,9 @@
               "protocol": "http2",
               "healthCheck": {
                 "type": "http",
-                "path": "/echo",
-                "timeoutSecs": 5,
-                "intervalSecs": 30
+                "path": "/echo1",
+                "timeoutSecs": 30,
+                "intervalSecs": 50
               },
               "tls": true
             }
