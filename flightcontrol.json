@@ -77,9 +77,9 @@
               "tls": true
             }
           ],
-          "cpu": 256,
+          "cpu": 0.25,
           "gpu": 0,
-          "memory": 512,
+          "memory": 0.5,
           "healthCheckPath": "/",
           "healthCheckTimeoutSecs": 4,
           "healthCheckIntervalSecs": 5,
