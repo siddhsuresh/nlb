@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	TCPPort   = ":8001"
+	TCPPort   = ":8007"
 	UDPPort   = ":8002"
 	GRPCPort  = ":8003"
 	HTTPPort  = ":8004"
