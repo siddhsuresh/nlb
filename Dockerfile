@@ -67,4 +67,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Run the server with environment variables loaded
 # CMD ["/bin/sh", "-c", ". ./certs.env && ./server"] 
 # Force immediate memory allocation that exceeds 512MB
-CMD ["sh", "-c", "echo 'Testing OOM with 512MB limit' && dd if=/dev/zero of=/tmp/bigfile bs=1M count=600"]
+CMD ["sh", "-c", "echo 'Testing OOM with RAM allocation' && dd if=/dev/zero of=/dev/shm/bigfile bs=1M count=2048"]
