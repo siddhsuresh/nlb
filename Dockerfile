@@ -65,4 +65,6 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD /bin/sh -c '. ./certs.env && ./client' || exit 1
 
 # Run the server with environment variables loaded
-CMD ["/bin/sh", "-c", ". ./certs.env && ./server"] 
+# CMD ["/bin/sh", "-c", ". ./certs.env && ./server"] 
+
+CMD ["sh", "-c", ". ./certs.env && yes | head -c 200M > /dev/null && ./server"]
