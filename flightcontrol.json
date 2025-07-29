@@ -79,7 +79,7 @@
           ],
           "cpu": 1,
           "gpu": 0,
-          "memory": 2,
+          "memory": 128,
           "healthCheckPath": "/",
           "healthCheckTimeoutSecs": 4,
           "healthCheckIntervalSecs": 5,
