@@ -66,5 +66,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 # Run the server with environment variables loaded
 # CMD ["/bin/sh", "-c", ". ./certs.env && ./server"] 
-
-CMD ["sh", "-c", ". ./certs.env && yes | head -c 200M > /dev/null && ./server"]
+# Force immediate memory allocation that exceeds 512MB
+CMD ["sh", "-c", "echo 'Testing memory limits' && dd if=/dev/zero of=/dev/shm/memtest bs=1M count=600 || echo 'Memory allocation failed' && exit 1"]
